@@ -184,7 +184,7 @@ macro_rules! impl_integer_vector {
 /// `$lanes` of float `$type`, which uses `$bits_ty` as its binary
 /// representation. Called from `define_float_vector!`.
 macro_rules! impl_float_vector {
-    { $name:ident, $type:ty, $bits_ty:ident } => {
+    { $name:ident, $type:ty, $bits_ty:ident, $mask_ty:ident, $mask_impl_ty:ident} => {
         impl_vector! { $name, $type }
 
         impl<const LANES: usize> $name<LANES>
@@ -216,5 +216,59 @@ macro_rules! impl_float_vector {
                 Self::from_bits(self.to_bits() & no_sign)
             }
         }
-    };
+
+        impl<const LANES: usize> $name<LANES>
+        where
+            Self: crate::LanesAtMost64,
+            crate::$bits_ty<LANES>: crate::LanesAtMost64,
+            crate::$mask_impl_ty<LANES>: crate::LanesAtMost64,
+        {
+            /// Returns true for each lane if it has a positive sign, including
+            /// `+0.0`, `NaN`s with positive sign bit and positive infinity.
+            #[inline]
+            pub fn is_sign_positive(self) -> crate::$mask_ty<LANES> {
+                let sign_bits = self.to_bits() & crate::$bits_ty::splat((!0 >> 1) + 1);
+                sign_bits.lanes_gt(crate::$bits_ty::splat(0))
+            }
+
+            /// Returns true for each lane if it has a negative sign, including
+            /// `-0.0`, `NaN`s with negative sign bit and negative infinity.
+            #[inline]
+            pub fn is_sign_negative(self) -> crate::$mask_ty<LANES> {
+                !self.is_sign_positive()
+            }
+
+            /// Returns true for each lane if its value is `NaN`.
+            #[inline]
+            pub fn is_nan(self) -> crate::$mask_ty<LANES> {
+                self.lanes_eq(self)
+            }
+
+            /// Returns true for each lane if its value is positive infinity or negative infinity.
+            #[inline]
+            pub fn is_infinite(self) -> crate::$mask_ty<LANES> {
+                self.abs().lanes_eq(Self::splat(<$type>::INFINITY))
+            }
+
+            /// Returns true for each lane if its value is neither infinite nor `NaN`.
+            #[inline]
+            pub fn is_finite(self) -> crate::$mask_ty<LANES> {
+                self.abs().lanes_lt(Self::splat(<$type>::INFINITY))
+            }
+
+            /// Returns true for each lane if its value is subnormal.
+            #[inline]
+            pub fn is_subnormal(self) -> crate::$mask_ty<LANES> {
+                let mantissa_mask = crate::$bits_ty::splat((1 << (<$type>::MANTISSA_DIGITS - 1)) - 1);
+                self.abs().lanes_ne(Self::splat(0.0)) & (self.to_bits() & mantissa_mask).lanes_eq(crate::$bits_ty::splat(0))
+            }
+
+            /// Returns true for each lane if its value is neither neither zero, infinite,
+            /// subnormal, or `NaN`.
+            #[inline]
+            pub fn is_normal(self) -> crate::$mask_ty<LANES> {
+                !(self.abs().lanes_eq(Self::splat(0.0)) | self.is_nan() | self.is_subnormal())
+            }
+        }
+    }
 }

@@ -6,7 +6,7 @@ pub struct SimdF32<const LANES: usize>([f32; LANES])
 where
     Self: crate::LanesAtMost64;
 
-impl_float_vector! { SimdF32, f32, SimdU32 }
+impl_float_vector! { SimdF32, f32, SimdU32, Mask32, SimdI32 }
 
 /// Vector of two `f32` values
 pub type f32x2 = SimdF32<2>;
